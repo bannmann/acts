@@ -5,7 +5,7 @@ set -u
 # Exit if a pipeline exits non-zero
 set -e
 
-VERSION="1.4.1"
+VERSION="1.0.0"
 
 if [ "$#" = "1" ] && [ "$1" = "--version" ]; then
     echo "calsnap version $VERSION"
@@ -127,7 +127,7 @@ if [ -d "$lockfile" ]; then
 else
     if output=$(mkdir "$lockfile" 2>&1); then
         echo $$ >"$lockfile/pid"
-        log_debug "message=\"Created $lockfile/ with 'pid' referencing $$\""
+        log_debug "message=\"Created $lockfile with 'pid' referencing $$\""
     else
         die "calsnap-error message=\"Can't create lock $lockfile: $output\""
     fi
@@ -135,34 +135,10 @@ fi
 
 trap 'trap - INT TERM EXIT ; echo Exiting unexpectedly. >&2 ; rm -f "$lockfile/pid"; rmdir "$lockfile" ; exit 1' INT TERM EXIT
 
-# prettyprint [command] [string]
-# prettyprint archive_dirname /some/dir/path
+# prettyprint [string]
 prettyprint() {
-    pp_type="$1"
-    pp_str="$2"
-    case "$pp_type" in
-    archive_dirname)
-        # /foo/bar -> '-foobar', / -> ''
-        dirname=$(echo "$pp_str" | tr -d '/')
-        # Use printf so that non-POSIX echo(1) doesn't think it's a flag
-        case "$dirname" in
-        '' | '.') echo '' ;;
-        *) printf '%s%s' '-' "$dirname" ;;
-        esac
-        ;;
-    log_dirname)
-        # foo/bar -> /foo/bar, /foo/bar -> /foo/bar
-        case "$pp_str" in
-        /*) printf '%s'  "$pp_str" ;;
-        *)  printf '/%s' "$pp_str" ;;
-        esac
-        ;;
-    log_output)
-        # Make input into one unbroken string
-        echo "$pp_str" | tr '\n' " "
-        ;;
-    *) die "calsnap-prettyprint-error message=\"Unknown command '$pp_type'\"" ;;
-    esac
+    pp_str="$1"
+    echo "$pp_str" | tr '\n' " "
 }
 
 # PART 2: Preparation
@@ -191,65 +167,63 @@ if [ -n "$prebackupscript" ]; then
 fi
 
 # PART 3: Backup
+
 backuprc=0 # Notice any failed backups
 backuplist="" # Maintain list of successfully created archives
-for dir in $backuptargets; do
-    log_debug "message=\"Starting backup of $dir\""
+
+dailyarchive="$hostname-daily-$today"
+monthlyarchive="$hostname-monthly-$today"
+yearlyarchive="$hostname-yearly-$today"
+
+log_verbose "backup-start  type=daily name=$dailyarchive"
+archive_starttime=$(date +%s)
+
+# Uncontrolled expansion is bad, but we have little choice. See https://github.com/koalaman/shellcheck/wiki/Sc2086
+# shellcheck disable=SC2086
+if output="$(calltarsnap -c -f "$dailyarchive" -C / $tarsnapbackupoptions $backuptargets 2>&1)"; then
+    backuplist="$backuplist $dailyarchive"
+else
+    log_output=$(prettyprint "$output")
+    log_message "backup-error type=daily output=\"$log_output\""
+    backuprc=1
+fi
+archive_endtime=$(date +%s)
+log_verbose "backup-finish type=daily duration=$((archive_endtime - archive_starttime))s"
+
+# Determine whether other backup levels need to be created too
+# If so, copy them from $dailyarchive
+if ! echo "$archives" | grep -E -q "^$hostname-yearly-$year-[0-9:_-]{14}$"; then
+    # No yearly backup
+    log_debug "message=\"Copying daily archive to yearly archive\""
     archive_starttime=$(date +%s)
-    nicedirname=$(prettyprint archive_dirname "$dir")
-    logdirname=$(prettyprint log_dirname "$dir")
-
-    dailyarchive="$hostname-daily-$today$nicedirname"
-    monthlyarchive="$hostname-monthly-$today$nicedirname"
-    yearlyarchive="$hostname-yearly-$today$nicedirname"
-
-    log_verbose "backup-start  type=daily dir=/$dir name=$dailyarchive"
-    # Uncontrolled expansion is bad, but we have little choice. See https://github.com/koalaman/shellcheck/wiki/Sc2086
     # shellcheck disable=SC2086
-    if output="$(calltarsnap -c -f "$dailyarchive" -C / $tarsnapbackupoptions "$dir" 2>&1)"; then
-        backuplist="$backuplist $dailyarchive"
+    if output="$(calltarsnap -c -f "$yearlyarchive" $tarsnapbackupoptions "@@$dailyarchive" 2>&1)"; then
+        backuplist="$backuplist $yearlyarchive"
     else
-        log_output=$(prettyprint log_output "$output")
-        log_message "backup-error type=daily dir=$logdirname output=\"$log_output\""
+        log_output=$(prettyprint "$output")
+        log_message "copy-error  type=yearly output=\"$log_output\""
         backuprc=1
     fi
     archive_endtime=$(date +%s)
-    log_verbose "backup-finish type=daily dir=$logdirname duration=$((archive_endtime - archive_starttime))s"
+    log_verbose "copy-finish type=yearly name=$yearlyarchive duration=$((archive_endtime - archive_starttime))s"
+fi
 
-    # Determine whether other backup levels need to be created too
-    # If so, copy them from $dailyarchive
-    if ! echo "$archives" | grep -E -q "^$hostname-yearly-$year-.+$nicedirname$"; then
-        # No yearly backup
-        log_debug "message=\"Copying $logdirname daily archive to yearly archive\""
-        archive_starttime=$(date +%s)
-        # shellcheck disable=SC2086
-        if output="$(calltarsnap -c -f "$yearlyarchive" $tarsnapbackupoptions "@@$dailyarchive" 2>&1)"; then
-            backuplist="$backuplist $yearlyarchive"
-        else
-            log_output=$(prettyprint log_output "$output")
-            log_message "copy-error  type=yearly output=\"$log_output\""
-            backuprc=1
-        fi
-        archive_endtime=$(date +%s)
-        log_verbose "copy-finish type=yearly dir=$logdirname name=$yearlyarchive duration=$((archive_endtime - archive_starttime))s"
+if ! echo "$archives" | grep -E -q "^$hostname-monthly-$year-$month-[0-9:_-]{11}$"; then
+    # No monthly backup
+    log_debug "message=\"Copying daily archive to monthly archive\""
+    archive_starttime=$(date +%s)
+    # shellcheck disable=SC2086
+    if output="$(calltarsnap -c -f "$monthlyarchive" $tarsnapbackupoptions "@@$dailyarchive" 2>&1)"; then
+        backuplist="$backuplist $monthlyarchive"
+    else
+        log_output=$(prettyprint "$output")
+        log_message "copy-error  type=monthly output=\"$log_output\""
+        backuprc=1
     fi
+    archive_endtime=$(date +%s)
+    log_verbose "copy-finish type=monthly name=$monthlyarchive duration=$((archive_endtime - archive_starttime))s"
+fi
 
-    if ! echo "$archives" | grep -E -q "^$hostname-monthly-$year-$month-.+$nicedirname$"; then
-        # No monthly backup
-        log_debug "message=\"Copying $logdirname daily archive to monthly archive\""
-        archive_starttime=$(date +%s)
-        # shellcheck disable=SC2086
-        if output="$(calltarsnap -c -f "$monthlyarchive" $tarsnapbackupoptions "@@$dailyarchive" 2>&1)"; then
-            backuplist="$backuplist $monthlyarchive"
-        else
-            log_output=$(prettyprint log_output "$output")
-            log_message "copy-error  type=monthly output=\"$log_output\""
-            backuprc=1
-        fi
-        archive_endtime=$(date +%s)
-        log_verbose "copy-finish type=monthly dir=$logdirname name=$monthlyarchive duration=$((archive_endtime - archive_starttime))s"
-    fi
-done
 # Update the archive listing
 log_debug "Listing tarsnap archives before deleting old backups"
 archives=$(calltarsnap --list-archives | sort -n)
@@ -259,40 +233,36 @@ if [ "$backuprc" != "0" ]; then
     die "calsnap-tarsnap-error One of the backups failed -- not deleting old backups"
 fi
 
+# prune_backups [backuplevel] [max]
+# prune_backups monthly 12
 prune_backups() {
-    backuplevel=$1 max=$2
+    pb_backuplevel=$1
+    pb_max=$2
 
-    if [ "$max" -gt 0 ]; then
-        backupslist=$(echo "$archives" | grep -E "$hostname-$backuplevel-.+$nicedirname$" | sort -rn)
+    if [ "$pb_max" -gt 0 ]; then
+        backupslist=$(echo "$archives" | grep -E "$hostname-$pb_backuplevel-[0-9:_-]{19}$" | sort -rn)
         numberofbackups=$(printf '%s' "$backupslist" | awk 'END{print NR}')
-        if [ "$numberofbackups" -gt "$max" ]; then
-            log_debug "message=\"More than $max $backuplevel backups, deleting the oldest\""
-            echo "$backupslist" | tail -n +"$((max + 1))" | while read -r archiveprefixtodel; do
-                log_verbose "message=\"Deleting backup prefix $archiveprefixtodel*\""
-                echo "$archives" | grep -E "^$archiveprefixtodel" | while read -r archivetodel; do
-                    log_debug "message=\"Deleting backup $archivetodel\""
-                    if ! output="$(calltarsnap -d -f "$archivetodel" 2>&1)"; then
-                        log_output=$(prettyprint log_output "$output")
-                        log_message "delete-error type=$backuplevel output=\"$log_output\""
-                    fi
-                done
+        if [ "$numberofbackups" -gt "$pb_max" ]; then
+            log_debug "message=\"More than $pb_max $pb_backuplevel backups, deleting the oldest\""
+            echo "$backupslist" | tail -n +"$((pb_max + 1))" | while read -r archivetodel; do
+                log_verbose "message=\"Deleting backup $archivetodel\""
+                if ! output="$(calltarsnap -d -f "$archivetodel" 2>&1)"; then
+                    log_output=$(prettyprint "$output")
+                    log_message "delete-error type=$pb_backuplevel output=\"$log_output\""
+                fi
             done
         else
-            log_debug "message=\"Found $numberofbackups $backuplevel backups; not deleting any\""
+            log_debug "message=\"Found $numberofbackups $pb_backuplevel backups; not deleting any\""
         fi
     else
-        log_debug "message=\"Keeping all $backuplevel backups indefinitely; not deleting any\""
+        log_debug "message=\"Keeping all $pb_backuplevel backups indefinitely; not deleting any\""
     fi
 }
 
-for dir in $backuptargets; do
-    log_debug "message=\"Checking $dir for old backups to delete\""
-    nicedirname=$(prettyprint archive_dirname "$dir")
-
-    prune_backups yearly  $yearlybackups
-    prune_backups monthly $monthlybackups
-    prune_backups daily   $dailybackups
-done
+log_debug "message=\"Checking for old backups to delete\""
+prune_backups yearly  $yearlybackups
+prune_backups monthly $monthlybackups
+prune_backups daily   $dailybackups
 
 # Run the post-backup script
 if [ -n "$postbackupscript" ]; then
