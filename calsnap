@@ -8,22 +8,22 @@ set -e
 VERSION="1.4.1"
 
 if [ "$#" = "1" ] && [ "$1" = "--version" ]; then
-    echo "acts version $VERSION"
+    echo "calsnap version $VERSION"
     exit 0
 fi
 
 if [ "$#" = "1" ] && { [ "$1" = "-h" ] || [ "$1" = "--help" ]; }; then
-    echo "usage: acts [-c /path/to/acts.conf]"
+    echo "usage: calsnap [-c /path/to/calsnap.conf]"
     echo
-    echo "Configuration should be in /etc/acts.conf or /usr/local/etc/acts.conf,"
+    echo "Configuration should be in /etc/calsnap.conf or /usr/local/etc/calsnap.conf,"
     echo "or given after the -c option"
-    echo "See https://github.com/alexjurkiewicz/acts for more information."
+    echo "See https://github.com/bannmann/calsnap for more information."
     exit 0
 fi
 
-acts_conf= # Make sure it's always defined
+calsnap_conf= # Make sure it's always defined
 if [ "$#" = 2 ] && [ "$1" = "-c" ]; then
-    acts_conf=$2
+    calsnap_conf=$2
 fi
 
 starttime=$(date +%s)
@@ -34,7 +34,7 @@ syslog=
 log_error() {
     echo "Error: $*" >&2
     if [ -n "$syslog" ]; then
-        logger -t "acts[$$]" -p "$syslog.warn" "level=error $*"
+        logger -t "calsnap[$$]" -p "$syslog.warn" "level=error $*"
     fi
     exit 1
 }
@@ -42,7 +42,7 @@ log_message() {
     if [ "$verbose" -ge 0 ]; then
         echo "Warning: $*" >&2
         if [ -n "$syslog" ]; then
-            logger -t "acts[$$]" -p "$syslog.warn" "level=warn $*"
+            logger -t "calsnap[$$]" -p "$syslog.warn" "level=warn $*"
         fi
     fi
 }
@@ -50,7 +50,7 @@ log_verbose() {
     if [ "$verbose" -ge 1 ]; then
         echo "Info: $*" >&2
         if [ -n "$syslog" ]; then
-            logger -t "acts[$$]" -p "$syslog.info" "level=info $*"
+            logger -t "calsnap[$$]" -p "$syslog.info" "level=info $*"
         fi
     fi
 }
@@ -58,7 +58,7 @@ log_debug() {
     if [ "$verbose" -ge 2 ]; then
         echo "Debug: $*" >&2
         if [ -n "$syslog" ]; then
-            logger -t "acts[$$]" -p "$syslog.debug" "level=debug $*"
+            logger -t "calsnap[$$]" -p "$syslog.debug" "level=debug $*"
         fi
     fi
 }
@@ -69,23 +69,23 @@ die() {
 }
 
 # PART 1: Initialisation
-if [ -n "$acts_conf" ]; then
-    if [ -f "$acts_conf" ]; then
+if [ -n "$calsnap_conf" ]; then
+    if [ -f "$calsnap_conf" ]; then
         # This file isn't expected to exist--shellcheck can ignore it
         # shellcheck source=/dev/null
-        . "$acts_conf"
-        log_debug "load-config source=$acts_conf"
+        . "$calsnap_conf"
+        log_debug "load-config source=$calsnap_conf"
     else
-        die "load-config source=$acts_conf message=\"User-specified config not found\""
+        die "load-config source=$calsnap_conf message=\"User-specified config not found\""
     fi
-elif [ -f /etc/acts.conf ]; then
-    . /etc/acts.conf
-    log_debug "load-config source=/etc/acts.conf"
-elif [ -f /usr/local/etc/acts.conf ]; then
-    . /usr/local/etc/acts.conf
-    log_debug "load-config source=/usr/local/etc/acts.conf"
+elif [ -f /etc/calsnap.conf ]; then
+    . /etc/calsnap.conf
+    log_debug "load-config source=/etc/calsnap.conf"
+elif [ -f /usr/local/etc/calsnap.conf ]; then
+    . /usr/local/etc/calsnap.conf
+    log_debug "load-config source=/usr/local/etc/calsnap.conf"
 else
-    die "load-config-error message=\"No /etc/acts.conf, /usr/local/etc/acts.conf, or -c option\""
+    die "load-config-error message=\"No /etc/calsnap.conf, /usr/local/etc/calsnap.conf, or -c option\""
 fi
 # Use default values if anything is not set
 verbose="${verbose=0}"
@@ -96,7 +96,7 @@ prebackupscript="${prebackupscript=}"
 postbackupscript="${postbackupscript=}"
 tarsnap="${tarsnap:=tarsnap}"
 tarsnapbackupoptions="${tarsnapbackupoptions=}"
-lockfile="${lockfile=/var/run/acts}"
+lockfile="${lockfile=/var/run/calsnap}"
 dailybackups="${dailybackups:=31}"
 monthlybackups="${monthlybackups:=12}"
 yearlybackups="${yearlybackups:=0}"
@@ -106,7 +106,7 @@ export LANG
 
 # Parameter validation
 if [ -z "$backuptargets" ]; then
-    die "config-error message=\"\$backuptargets is not set in acts.conf.\""
+    die "config-error message=\"\$backuptargets is not set in calsnap.conf.\""
 fi
 
 if [ "$uselocaltime" = 0 ]; then
@@ -114,7 +114,7 @@ if [ "$uselocaltime" = 0 ]; then
 elif [ "$uselocaltime" = 1 ]; then
     utc=""
 else
-    die "config-error message=\"invalid \$uselocaltime in acts.conf; valid options are 0 (for UTC) or 1 (for local time).\""
+    die "config-error message=\"invalid \$uselocaltime in calsnap.conf; valid options are 0 (for UTC) or 1 (for local time).\""
 fi
 
 [ $((dailybackups)) = "$dailybackups" ]     || die "config-error message=\"Invalid \$dailybackups; must be a number.\""
@@ -123,13 +123,13 @@ fi
 
 # Create the lock. mkdir is atomic test/set, so use that instead of the typical test -f/touch combo
 if [ -d "$lockfile" ]; then
-    die "acts-error message=\"$lockfile exists referencing PID $(cat "$lockfile/pid" 2>/dev/null || echo "<none>"). Hint: If acts is not already running, rm -rf $lockfile.\""
+    die "calsnap-error message=\"$lockfile exists referencing PID $(cat "$lockfile/pid" 2>/dev/null || echo "<none>"). Hint: If calsnap is not already running, rm -rf $lockfile.\""
 else
     if output=$(mkdir "$lockfile" 2>&1); then
         echo $$ >"$lockfile/pid"
         log_debug "message=\"Created $lockfile/ with 'pid' referencing $$\""
     else
-        die "acts-error message=\"Can't create lock $lockfile: $output\""
+        die "calsnap-error message=\"Can't create lock $lockfile: $output\""
     fi
 fi
 
@@ -161,14 +161,14 @@ prettyprint() {
         # Make input into one unbroken string
         echo "$pp_str" | tr '\n' " "
         ;;
-    *) die "acts-prettyprint-error message=\"Unknown command '$pp_type'\"" ;;
+    *) die "calsnap-prettyprint-error message=\"Unknown command '$pp_type'\"" ;;
     esac
 }
 
 # PART 2: Preparation
 log_debug "Listing tarsnap archives before creating backups"
 if ! archives_unsorted=$(calltarsnap --list-archives); then
-    die "acts-tarsnap-error message=\"Couldn't get list of existing archives (Hint: is Tarsnap configured correctly?)\""
+    die "calsnap-tarsnap-error message=\"Couldn't get list of existing archives (Hint: is Tarsnap configured correctly?)\""
     exit 1
 fi
 archives=$(echo "$archives_unsorted" | sort -n)
@@ -186,7 +186,7 @@ if [ -n "$prebackupscript" ]; then
         log_verbose "run-prebackupscript script=$prebackupscript..."
         $prebackupscript
     else
-        die "acts-error message=\"prebackupscript $prebackupscript is not executable!\""
+        die "calsnap-error message=\"prebackupscript $prebackupscript is not executable!\""
     fi
 fi
 
@@ -256,7 +256,7 @@ archives=$(calltarsnap --list-archives | sort -n)
 
 # PART 4: Trim old backups.
 if [ "$backuprc" != "0" ]; then
-    die "acts-tarsnap-error One of the backups failed -- not deleting old backups"
+    die "calsnap-tarsnap-error One of the backups failed -- not deleting old backups"
 fi
 
 prune_backups() {
@@ -301,7 +301,7 @@ if [ -n "$postbackupscript" ]; then
         # shellcheck disable=SC2086
         $postbackupscript $backuplist
     else
-        die "acts-error message=\"postbackupscript $postbackupscript is not executable!\""
+        die "calsnap-error message=\"postbackupscript $postbackupscript is not executable!\""
     fi
 fi
 
@@ -310,5 +310,5 @@ rm -f "$lockfile/pid"
 rmdir "$lockfile"
 
 endtime=$(date +%s)
-log_verbose "acts-finished duration=$((endtime - starttime))s action=exiting"
+log_verbose "calsnap-finished duration=$((endtime - starttime))s action=exiting"
 exit 0

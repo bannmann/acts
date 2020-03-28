@@ -1,12 +1,12 @@
-ACTS 1.4.1
-==========
+CalSnap
+=======
 
 Another Calendar-based Tarsnap Script.
 
 Introduction
 ------------
 
-`acts` is a minimal shell script that creates backups with Tarsnap. Our
+`calsnap` is a minimal shell script that creates backups with Tarsnap. Our
 design goals:
 
 -   Just backup, no restore.
@@ -20,23 +20,23 @@ kept indefinitely.
 Download
 --------
 
-You can use the development version of `acts` by cloning this
+You can use the development version of `calsnap` by cloning this
 repository, or [download the latest stable
-release](https://github.com/alexjurkiewicz/acts/releases/).
+release](https://github.com/bannmann/calsnap/releases/).
 
 Usage
 -----
 
-1.  Take `acts.conf.sample`, customise it for your environment, and save
-    it to `/etc/acts.conf` or `/usr/local/etc/acts.conf`.
-2.  Run `acts` daily from cron.
+1.  Take `calsnap.conf.sample`, customise it for your environment, and save
+    it to `/etc/calsnap.conf` or `/usr/local/etc/calsnap.conf`.
+2.  Run `calsnap` daily from cron.
 
 Notes on behaviour:
 
--   `acts` creates archives of the form
+-   `calsnap` creates archives of the form
     `<hostname>-<period>-yyyy-mm-dd_HH:MM:SS-target`.
 -   Archives are created using the following logic:
-    -   Daily archives are created every time acts is run.
+    -   Daily archives are created every time calsnap is run.
     -   Monthly/yearly archives are copied from the most recent
         daily archive if they don't exist.
 -   Archives are deleted using the following logic by default:
@@ -59,21 +59,21 @@ FAQ
 
 * **How do I back up directories with spaces?** Sorry, acts doesn't support this. I suggest you create a symlink to the target directory which doesn't have spaces in its path, and add `-L` to `tarsnapbackupoptions` in your configuration file.
 
-* **How do I see the `tarsnap` output?** Basically, you don't. `acts` only
-shows `tarsnap` output if tarsnap failed. To see what acts is doing,
-you can set `verbose=1` in your `acts.conf`. You can get some good `tarsnap`
+* **How do I see the `tarsnap` output?** Basically, you don't. `calsnap` only
+shows `tarsnap` output if tarsnap failed. To see what calsnap is doing,
+you can set `verbose=1` in your `calsnap.conf`. You can get some good `tarsnap`
 info, including exactly how much new data this backup consumed, with
-a **pre**backupscript. Be sure to set `prebackupscript` in `acts.conf`
+a **pre**backupscript. Be sure to set `prebackupscript` in `calsnap.conf`
 to wherever you put this script:
 
 ```sh
 #!/bin/sh
 
-. /etc/acts.conf     # Or wherever your acts.conf lives
+. /etc/calsnap.conf     # Or wherever your calsnap.conf lives
 tarsnap --dry-run --quiet --print-stats --humanize-numbers -C / -c $backuptargets 2>&1
 ```
 
 Help
 ----
 
-Open a [Github issue](https://github.com/alexjurkiewicz/acts/issues).
+Open a [Github issue](https://github.com/bannmann/calsnap/issues).

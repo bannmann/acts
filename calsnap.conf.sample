@@ -1,5 +1,5 @@
 #!/bin/sh
-# acts configuration file
+# calsnap configuration file
 
 ## backuptargets MUST be set before use ##
 # backuptargets
@@ -46,13 +46,13 @@ verbose=1
 # prebackupscript
 # This script is run before backups are created. Make sure it's executable.
 # Default: unset
-#prebackupscript=/root/acts-pre.sh
+#prebackupscript=/root/calsnap-pre.sh
 
 # postbackupscript
-# This script is run after acts is otherwise finished. Make sure it's executable.
+# This script is run after calsnap is otherwise finished. Make sure it's executable.
 # All created backups are passed as args
 # Default: unset
-#postbackupscript=/root/acts-post.sh
+#postbackupscript=/root/calsnap-post.sh
 
 # syslog
 # If set, log output will be written to syslog with the given facility.
@@ -61,9 +61,9 @@ verbose=1
 #syslog=user
 
 # lockfile
-# Where acts should write its lockfile.
-# Default: /var/run/acts
-#lockfile=/tmp/acts
+# Where calsnap should write its lockfile.
+# Default: /var/run/calsnap
+#lockfile=/tmp/calsnap
 
 # How many backups of each type to keep
 # For all limits, 0 means keep indefinitely
