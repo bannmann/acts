@@ -25,8 +25,7 @@ dist/calsnap_$(VERSION)_all.deb: dist
 		--deb-no-default-config-files \
 		"calsnap=/usr/bin/calsnap" \
 		"calsnap.conf.sample=/etc/calsnap.conf" \
-		"README.md=/usr/share/docs/calsnap/README.md" \
-		"contrib/=/usr/share/doc/calsnap/contrib/"
+		"README.md=/usr/share/docs/calsnap/README.md"
 
 dist:
 	@ mkdir dist
