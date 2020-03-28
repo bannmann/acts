@@ -4,7 +4,7 @@ CalSnap
 Introduction
 ------------
 
-`calsnap` is a minimal shell script that creates backups with Tarsnap. Our design goals:
+`calsnap` is a minimal shell script that creates backups with [Tarsnap](https://www.tarsnap.com/). Our design goals:
 
 -   Calendar-based backup schedule
 -   Each archive contains all backup targets
