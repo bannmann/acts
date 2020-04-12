@@ -4,7 +4,7 @@ CalSnap
 Introduction
 ------------
 
-`calsnap` is a minimal shell script that creates backups with Tarsnap. Our design goals:
+`calsnap` is a minimal shell script that creates backups with [Tarsnap](https://www.tarsnap.com/). Our design goals:
 
 -   Calendar-based backup schedule
 -   Each archive contains all backup targets
@@ -12,8 +12,8 @@ Introduction
 -   Portable
 -   Small code footprint
 
-One daily Tarsnap archive is created per run. By default, 31 daily and 12 monthly backups are kept, and yearly backups
-are kept indefinitely.
+One daily Tarsnap archive is created per run. By default, 31 daily, 26 weekly and 12 monthly backups are kept, and
+yearly backups are kept indefinitely.
 
 Download
 --------
@@ -31,12 +31,15 @@ Usage
 Notes on behavior:
 
 -   `calsnap` creates archives of the form `<hostname>-<period>-yyyy-mm-dd_HH:MM:SS`.
+    -   For weekly archives, the `period` value is `weekly-<year>W<week>`, e.g. `weekly-2020W01`.
+    -   The other `period` values are `daily`, `monthly` and `yearly`.
 -   Archives are created using the following logic:
     -   Daily archives are created every time `calsnap` is run.
-    -   Monthly/yearly archives are copied from the most recent daily archive if they don't exist.
+    -   Weekly/monthly/yearly archives are copied from the most recent daily archive if they don't exist.
 -   Archives are deleted using the following logic by default:
     -   If any backups failed, delete nothing.
     -   Keep the most recent 31 daily backups, and delete any older ones.
+    -   Keep the most recent 26 weekly backups, and delete any older ones.
     -   Keep the most recent 12 monthly backups, and delete any older ones.
     -   Do not delete any yearly backups.
 
