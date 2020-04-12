@@ -38,7 +38,7 @@ log_error() {
     fi
     exit 1
 }
-log_message() {
+log_warn() {
     if [ "$verbose" -ge 0 ]; then
         echo "Warning: $*" >&2
         if [ -n "$syslog" ]; then
@@ -46,7 +46,7 @@ log_message() {
         fi
     fi
 }
-log_verbose() {
+log_info() {
     if [ "$verbose" -ge 1 ]; then
         echo "Info: $*" >&2
         if [ -n "$syslog" ]; then
@@ -162,7 +162,7 @@ isoweek=$(echo "$rawdateinfo" | cut -d_ -f3)
 # Run the pre-backup script
 if [ -n "$prebackupscript" ]; then
     if [ -x "$prebackupscript" ]; then
-        log_verbose "run-prebackupscript script=$prebackupscript..."
+        log_info "run-prebackupscript script=$prebackupscript..."
         $prebackupscript
     else
         die "calsnap-error message=\"prebackupscript $prebackupscript is not executable!\""
@@ -179,7 +179,7 @@ weeklyarchive="$hostname-weekly-$isoweek-$today"
 monthlyarchive="$hostname-monthly-$today"
 yearlyarchive="$hostname-yearly-$today"
 
-log_verbose "backup-start  type=daily name=$dailyarchive"
+log_info "backup-start  type=daily name=$dailyarchive"
 archive_starttime=$(date +%s)
 
 # Uncontrolled expansion is bad, but we have little choice. See https://github.com/koalaman/shellcheck/wiki/Sc2086
@@ -188,11 +188,11 @@ if output="$(calltarsnap -c -f "$dailyarchive" -C / $tarsnapbackupoptions $backu
     backuplist="$backuplist $dailyarchive"
 else
     log_output=$(prettyprint "$output")
-    log_message "backup-error type=daily output=\"$log_output\""
+    log_warn "backup-error type=daily output=\"$log_output\""
     backuprc=1
 fi
 archive_endtime=$(date +%s)
-log_verbose "backup-finish type=daily duration=$((archive_endtime - archive_starttime))s"
+log_info "backup-finish type=daily duration=$((archive_endtime - archive_starttime))s"
 
 # copy_backup [source type] [source] [target type] [target]
 # prune_backups daily GLaDOS-daily-2020-31-12_13:37:42 yearly GLaDOS-yearly-2020-31-12_13:37:42
@@ -209,11 +209,11 @@ copy_backup() {
         backuplist="$backuplist $cb_target"
     else
         log_output=$(prettyprint "$output")
-        log_message "copy-error  type=$cb_targettype output=\"$log_output\""
+        log_warn "copy-error  type=$cb_targettype output=\"$log_output\""
         backuprc=1
     fi
     archive_endtime=$(date +%s)
-    log_verbose "copy-finish type=$cb_targettype name=$cb_target duration=$((archive_endtime - archive_starttime))s"
+    log_info "copy-finish type=$cb_targettype name=$cb_target duration=$((archive_endtime - archive_starttime))s"
 }
 
 # Determine whether other backup levels need to be created too
@@ -254,10 +254,10 @@ prune_backups() {
         if [ "$numberofbackups" -gt "$pb_max" ]; then
             log_debug "message=\"More than $pb_max $pb_backuplevel backups, deleting the oldest\""
             echo "$backupslist" | tail -n +"$((pb_max + 1))" | while read -r archivetodel; do
-                log_verbose "message=\"Deleting backup $archivetodel\""
+                log_info "message=\"Deleting backup $archivetodel\""
                 if ! output="$(calltarsnap -d -f "$archivetodel" 2>&1)"; then
                     log_output=$(prettyprint "$output")
-                    log_message "delete-error type=$pb_backuplevel output=\"$log_output\""
+                    log_warn "delete-error type=$pb_backuplevel output=\"$log_output\""
                 fi
             done
         else
@@ -277,7 +277,7 @@ prune_backups daily   $dailybackups
 # Run the post-backup script
 if [ -n "$postbackupscript" ]; then
     if [ -x "$postbackupscript" ]; then
-        log_verbose "run-postbackupscript script=$postbackupscript..."
+        log_info "run-postbackupscript script=$postbackupscript..."
         # shellcheck disable=SC2086
         $postbackupscript $backuplist
     else
@@ -290,5 +290,5 @@ rm -f "$lockfile/pid"
 rmdir "$lockfile"
 
 endtime=$(date +%s)
-log_verbose "calsnap-finished duration=$((endtime - starttime))s action=exiting"
+log_info "calsnap-finished duration=$((endtime - starttime))s action=exiting"
 exit 0
