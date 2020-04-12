@@ -67,7 +67,8 @@ verbose=1
 
 # How many backups of each type to keep
 # For all limits, 0 means keep indefinitely
-# Defaults: 31 daily, 12 monthly, and yearly indefinitely
+# Defaults: 31 daily, 26 weekly (i.e. 6 months), 12 monthly, and yearly indefinitely
 #dailybackups=31
+#weeklybackups=26
 #monthlybackups=12
 #yearlybackups=0

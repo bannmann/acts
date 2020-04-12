@@ -98,6 +98,7 @@ tarsnap="${tarsnap:=tarsnap}"
 tarsnapbackupoptions="${tarsnapbackupoptions=}"
 lockfile="${lockfile=/var/run/calsnap}"
 dailybackups="${dailybackups:=31}"
+weeklybackups="${weeklybackups:=12}"
 monthlybackups="${monthlybackups:=12}"
 yearlybackups="${yearlybackups:=0}"
 type calltarsnap >/dev/null 2>&1 || calltarsnap() { $tarsnap "$@"; }
@@ -118,6 +119,7 @@ else
 fi
 
 [ $((dailybackups)) = "$dailybackups" ]     || die "config-error message=\"Invalid \$dailybackups; must be a number.\""
+[ $((weeklybackups)) = "$weeklybackups" ]   || die "config-error message=\"Invalid \$weeklybackups; must be a number.\""
 [ $((monthlybackups)) = "$monthlybackups" ] || die "config-error message=\"Invalid \$monthlybackups; must be a number.\""
 [ $((yearlybackups)) = "$yearlybackups" ]   || die "config-error message=\"Invalid \$yearlybackups; must be a number.\""
 
@@ -151,10 +153,11 @@ archives=$(echo "$archives_unsorted" | sort -n)
 
 # When is now?
 # Instead of re-running date, be paranoid the day was microseconds away from ending
-today=$(date $utc "+%Y-%m-%d_%H:%M:%S")
+rawdateinfo=$(date $utc "+%Y-%m-%d_%H:%M:%S_%GW%V")
+today=$( echo "$rawdateinfo" | cut -d_ -f1-2)
 year=$( echo "$today" | cut -d_ -f1 | cut -d- -f1)
 month=$(echo "$today" | cut -d_ -f1 | cut -d- -f2)
-# day=$(echo "$today" | cut -d_ -f1 | cut -d- -f3) # unused
+isoweek=$(echo "$rawdateinfo" | cut -d_ -f3)
 
 # Run the pre-backup script
 if [ -n "$prebackupscript" ]; then
@@ -172,6 +175,7 @@ backuprc=0 # Notice any failed backups
 backuplist="" # Maintain list of successfully created archives
 
 dailyarchive="$hostname-daily-$today"
+weeklyarchive="$hostname-weekly-$isoweek-$today"
 monthlyarchive="$hostname-monthly-$today"
 yearlyarchive="$hostname-yearly-$today"
 
@@ -190,38 +194,43 @@ fi
 archive_endtime=$(date +%s)
 log_verbose "backup-finish type=daily duration=$((archive_endtime - archive_starttime))s"
 
+# copy_backup [source type] [source] [target type] [target]
+# prune_backups daily GLaDOS-daily-2020-31-12_13:37:42 yearly GLaDOS-yearly-2020-31-12_13:37:42
+copy_backup() {
+    cb_sourcetype=$1
+    cb_source=$2
+    cb_targettype=$3
+    cb_target=$4
+
+    log_debug "message=\"Copying $cb_sourcetype archive to $cb_targettype archive\""
+    archive_starttime=$(date +%s)
+    # shellcheck disable=SC2086
+    if output="$(calltarsnap -c -f "$cb_target" $tarsnapbackupoptions "@@$cb_source" 2>&1)"; then
+        backuplist="$backuplist $cb_target"
+    else
+        log_output=$(prettyprint "$output")
+        log_message "copy-error  type=$cb_targettype output=\"$log_output\""
+        backuprc=1
+    fi
+    archive_endtime=$(date +%s)
+    log_verbose "copy-finish type=$cb_targettype name=$cb_target duration=$((archive_endtime - archive_starttime))s"
+}
+
 # Determine whether other backup levels need to be created too
 # If so, copy them from $dailyarchive
 if ! echo "$archives" | grep -E -q "^$hostname-yearly-$year-[0-9:_-]{14}$"; then
     # No yearly backup
-    log_debug "message=\"Copying daily archive to yearly archive\""
-    archive_starttime=$(date +%s)
-    # shellcheck disable=SC2086
-    if output="$(calltarsnap -c -f "$yearlyarchive" $tarsnapbackupoptions "@@$dailyarchive" 2>&1)"; then
-        backuplist="$backuplist $yearlyarchive"
-    else
-        log_output=$(prettyprint "$output")
-        log_message "copy-error  type=yearly output=\"$log_output\""
-        backuprc=1
-    fi
-    archive_endtime=$(date +%s)
-    log_verbose "copy-finish type=yearly name=$yearlyarchive duration=$((archive_endtime - archive_starttime))s"
+    copy_backup daily "$dailyarchive" yearly "$yearlyarchive"
 fi
 
 if ! echo "$archives" | grep -E -q "^$hostname-monthly-$year-$month-[0-9:_-]{11}$"; then
     # No monthly backup
-    log_debug "message=\"Copying daily archive to monthly archive\""
-    archive_starttime=$(date +%s)
-    # shellcheck disable=SC2086
-    if output="$(calltarsnap -c -f "$monthlyarchive" $tarsnapbackupoptions "@@$dailyarchive" 2>&1)"; then
-        backuplist="$backuplist $monthlyarchive"
-    else
-        log_output=$(prettyprint "$output")
-        log_message "copy-error  type=monthly output=\"$log_output\""
-        backuprc=1
-    fi
-    archive_endtime=$(date +%s)
-    log_verbose "copy-finish type=monthly name=$monthlyarchive duration=$((archive_endtime - archive_starttime))s"
+    copy_backup daily "$dailyarchive" monthly "$monthlyarchive"
+fi
+
+if ! echo "$archives" | grep -E -q "^$hostname-weekly-$isoweek-[0-9:_-]{19}$"; then
+    # No weekly backup
+    copy_backup daily "$dailyarchive" weekly "$weeklyarchive"
 fi
 
 # Update the archive listing
@@ -240,7 +249,7 @@ prune_backups() {
     pb_max=$2
 
     if [ "$pb_max" -gt 0 ]; then
-        backupslist=$(echo "$archives" | grep -E "$hostname-$pb_backuplevel-[0-9:_-]{19}$" | sort -rn)
+        backupslist=$(echo "$archives" | grep -E "$hostname-$pb_backuplevel-([0-9]{4}W[0-9]{2}-)?[0-9:_-]{19}$" | sort -rn)
         numberofbackups=$(printf '%s' "$backupslist" | awk 'END{print NR}')
         if [ "$numberofbackups" -gt "$pb_max" ]; then
             log_debug "message=\"More than $pb_max $pb_backuplevel backups, deleting the oldest\""
@@ -262,6 +271,7 @@ prune_backups() {
 log_debug "message=\"Checking for old backups to delete\""
 prune_backups yearly  $yearlybackups
 prune_backups monthly $monthlybackups
+prune_backups weekly  $weeklybackups
 prune_backups daily   $dailybackups
 
 # Run the post-backup script
