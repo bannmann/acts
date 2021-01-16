@@ -156,8 +156,8 @@ archives=$(echo "$archives_unsorted" | sort -n)
 # When is now?
 # Instead of re-running date, be paranoid the day was microseconds away from ending
 rawdateinfo=$(date $utc "+%Y-%m-%d_%H:%M:%S_%GW%V")
-today=$( echo "$rawdateinfo" | cut -d_ -f1-2)
-year=$( echo "$today" | cut -d_ -f1 | cut -d- -f1)
+today=$(echo "$rawdateinfo" | cut -d_ -f1-2)
+year=$(echo "$today" | cut -d_ -f1 | cut -d- -f1)
 quarter=$(date -d "$(echo "$rawdateinfo" | cut -d_ -f1)" "+%YQ%q")
 month=$(echo "$today" | cut -d_ -f1 | cut -d- -f2)
 isoweek=$(echo "$rawdateinfo" | cut -d_ -f3)
@@ -278,11 +278,11 @@ prune_backups() {
 }
 
 log_debug "message=\"Checking for old backups to delete\""
-prune_backups yearly  $yearlybackups
+prune_backups yearly    $yearlybackups
 prune_backups quarterly $quarterlybackups
-prune_backups monthly $monthlybackups
-prune_backups weekly  $weeklybackups
-prune_backups daily   $dailybackups
+prune_backups monthly   $monthlybackups
+prune_backups weekly    $weeklybackups
+prune_backups daily     $dailybackups
 
 # Run the post-backup script
 if [ -n "$postbackupscript" ]; then
