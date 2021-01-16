@@ -98,7 +98,7 @@ tarsnap="${tarsnap:=tarsnap}"
 tarsnapbackupoptions="${tarsnapbackupoptions=}"
 lockfile="${lockfile=/var/run/calsnap}"
 dailybackups="${dailybackups:=31}"
-weeklybackups="${weeklybackups:=12}"
+weeklybackups="${weeklybackups:=26}"
 monthlybackups="${monthlybackups:=12}"
 yearlybackups="${yearlybackups:=0}"
 type calltarsnap >/dev/null 2>&1 || calltarsnap() { $tarsnap "$@"; }
