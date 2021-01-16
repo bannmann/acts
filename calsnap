@@ -5,7 +5,7 @@ set -u
 # Exit if a pipeline exits non-zero
 set -e
 
-VERSION="1.1.0"
+VERSION="1.2.0"
 
 if [ "$#" = "1" ] && [ "$1" = "--version" ]; then
     echo "calsnap version $VERSION"
@@ -38,7 +38,7 @@ log_error() {
     fi
     exit 1
 }
-log_message() {
+log_warn() {
     if [ "$verbose" -ge 0 ]; then
         echo "Warning: $*" >&2
         if [ -n "$syslog" ]; then
@@ -46,7 +46,7 @@ log_message() {
         fi
     fi
 }
-log_verbose() {
+log_info() {
     if [ "$verbose" -ge 1 ]; then
         echo "Info: $*" >&2
         if [ -n "$syslog" ]; then
@@ -98,8 +98,9 @@ tarsnap="${tarsnap:=tarsnap}"
 tarsnapbackupoptions="${tarsnapbackupoptions=}"
 lockfile="${lockfile=/var/run/calsnap}"
 dailybackups="${dailybackups:=31}"
-weeklybackups="${weeklybackups:=12}"
+weeklybackups="${weeklybackups:=26}"
 monthlybackups="${monthlybackups:=12}"
+quarterlybackups="${quarterlybackups:=4}"
 yearlybackups="${yearlybackups:=0}"
 type calltarsnap >/dev/null 2>&1 || calltarsnap() { $tarsnap "$@"; }
 LANG="${LANG=en_US.UTF-8}"
@@ -121,6 +122,7 @@ fi
 [ $((dailybackups)) = "$dailybackups" ]     || die "config-error message=\"Invalid \$dailybackups; must be a number.\""
 [ $((weeklybackups)) = "$weeklybackups" ]   || die "config-error message=\"Invalid \$weeklybackups; must be a number.\""
 [ $((monthlybackups)) = "$monthlybackups" ] || die "config-error message=\"Invalid \$monthlybackups; must be a number.\""
+[ $((quarterlybackups)) = "$quarterlybackups" ] || die "config-error message=\"Invalid \$quarterlybackups; must be a number.\""
 [ $((yearlybackups)) = "$yearlybackups" ]   || die "config-error message=\"Invalid \$yearlybackups; must be a number.\""
 
 # Create the lock. mkdir is atomic test/set, so use that instead of the typical test -f/touch combo
@@ -154,15 +156,16 @@ archives=$(echo "$archives_unsorted" | sort -n)
 # When is now?
 # Instead of re-running date, be paranoid the day was microseconds away from ending
 rawdateinfo=$(date $utc "+%Y-%m-%d_%H:%M:%S_%GW%V")
-today=$( echo "$rawdateinfo" | cut -d_ -f1-2)
-year=$( echo "$today" | cut -d_ -f1 | cut -d- -f1)
+today=$(echo "$rawdateinfo" | cut -d_ -f1-2)
+year=$(echo "$today" | cut -d_ -f1 | cut -d- -f1)
+quarter=$(date -d "$(echo "$rawdateinfo" | cut -d_ -f1)" "+%YQ%q")
 month=$(echo "$today" | cut -d_ -f1 | cut -d- -f2)
 isoweek=$(echo "$rawdateinfo" | cut -d_ -f3)
 
 # Run the pre-backup script
 if [ -n "$prebackupscript" ]; then
     if [ -x "$prebackupscript" ]; then
-        log_verbose "run-prebackupscript script=$prebackupscript..."
+        log_info "run-prebackupscript script=$prebackupscript..."
         $prebackupscript
     else
         die "calsnap-error message=\"prebackupscript $prebackupscript is not executable!\""
@@ -177,9 +180,10 @@ backuplist="" # Maintain list of successfully created archives
 dailyarchive="$hostname-daily-$today"
 weeklyarchive="$hostname-weekly-$isoweek-$today"
 monthlyarchive="$hostname-monthly-$today"
+quarterlyarchive="$hostname-quarterly-$quarter-$today"
 yearlyarchive="$hostname-yearly-$today"
 
-log_verbose "backup-start  type=daily name=$dailyarchive"
+log_info "backup-start  type=daily name=$dailyarchive"
 archive_starttime=$(date +%s)
 
 # Uncontrolled expansion is bad, but we have little choice. See https://github.com/koalaman/shellcheck/wiki/Sc2086
@@ -188,11 +192,11 @@ if output="$(calltarsnap -c -f "$dailyarchive" -C / $tarsnapbackupoptions $backu
     backuplist="$backuplist $dailyarchive"
 else
     log_output=$(prettyprint "$output")
-    log_message "backup-error type=daily output=\"$log_output\""
+    log_warn "backup-error type=daily output=\"$log_output\""
     backuprc=1
 fi
 archive_endtime=$(date +%s)
-log_verbose "backup-finish type=daily duration=$((archive_endtime - archive_starttime))s"
+log_info "backup-finish type=daily duration=$((archive_endtime - archive_starttime))s"
 
 # copy_backup [source type] [source] [target type] [target]
 # prune_backups daily GLaDOS-daily-2020-31-12_13:37:42 yearly GLaDOS-yearly-2020-31-12_13:37:42
@@ -209,11 +213,11 @@ copy_backup() {
         backuplist="$backuplist $cb_target"
     else
         log_output=$(prettyprint "$output")
-        log_message "copy-error  type=$cb_targettype output=\"$log_output\""
+        log_warn "copy-error  type=$cb_targettype output=\"$log_output\""
         backuprc=1
     fi
     archive_endtime=$(date +%s)
-    log_verbose "copy-finish type=$cb_targettype name=$cb_target duration=$((archive_endtime - archive_starttime))s"
+    log_info "copy-finish type=$cb_targettype name=$cb_target duration=$((archive_endtime - archive_starttime))s"
 }
 
 # Determine whether other backup levels need to be created too
@@ -221,6 +225,11 @@ copy_backup() {
 if ! echo "$archives" | grep -E -q "^$hostname-yearly-$year-[0-9:_-]{14}$"; then
     # No yearly backup
     copy_backup daily "$dailyarchive" yearly "$yearlyarchive"
+fi
+
+if ! echo "$archives" | grep -E -q "^$hostname-quarterly-$quarter-[0-9:_-]{19}$"; then
+    # No quarterly backup
+    copy_backup daily "$dailyarchive" quarterly "$quarterlyarchive"
 fi
 
 if ! echo "$archives" | grep -E -q "^$hostname-monthly-$year-$month-[0-9:_-]{11}$"; then
@@ -248,36 +257,37 @@ prune_backups() {
     pb_backuplevel=$1
     pb_max=$2
 
+    backupslist=$(echo "$archives" | grep -E "$hostname-$pb_backuplevel-([0-9]{4}W[0-9]{2}-)?[0-9:_-]{19}$" | sort -rn)
+    numberofbackups=$(printf '%s' "$backupslist" | awk 'END{print NR}')
     if [ "$pb_max" -gt 0 ]; then
-        backupslist=$(echo "$archives" | grep -E "$hostname-$pb_backuplevel-([0-9]{4}W[0-9]{2}-)?[0-9:_-]{19}$" | sort -rn)
-        numberofbackups=$(printf '%s' "$backupslist" | awk 'END{print NR}')
         if [ "$numberofbackups" -gt "$pb_max" ]; then
             log_debug "message=\"More than $pb_max $pb_backuplevel backups, deleting the oldest\""
             echo "$backupslist" | tail -n +"$((pb_max + 1))" | while read -r archivetodel; do
-                log_verbose "message=\"Deleting backup $archivetodel\""
+                log_info "message=\"Deleting backup $archivetodel\""
                 if ! output="$(calltarsnap -d -f "$archivetodel" 2>&1)"; then
                     log_output=$(prettyprint "$output")
-                    log_message "delete-error type=$pb_backuplevel output=\"$log_output\""
+                    log_warn "delete-error type=$pb_backuplevel output=\"$log_output\""
                 fi
             done
         else
-            log_debug "message=\"Found $numberofbackups $pb_backuplevel backups; not deleting any\""
+            log_debug "message=\"Found $numberofbackups $pb_backuplevel backups (limit $pb_max); not deleting any\""
         fi
     else
-        log_debug "message=\"Keeping all $pb_backuplevel backups indefinitely; not deleting any\""
+        log_debug "message=\"Found $numberofbackups $pb_backuplevel backups (no limit); not deleting any\""
     fi
 }
 
 log_debug "message=\"Checking for old backups to delete\""
-prune_backups yearly  $yearlybackups
-prune_backups monthly $monthlybackups
-prune_backups weekly  $weeklybackups
-prune_backups daily   $dailybackups
+prune_backups yearly    $yearlybackups
+prune_backups quarterly $quarterlybackups
+prune_backups monthly   $monthlybackups
+prune_backups weekly    $weeklybackups
+prune_backups daily     $dailybackups
 
 # Run the post-backup script
 if [ -n "$postbackupscript" ]; then
     if [ -x "$postbackupscript" ]; then
-        log_verbose "run-postbackupscript script=$postbackupscript..."
+        log_info "run-postbackupscript script=$postbackupscript..."
         # shellcheck disable=SC2086
         $postbackupscript $backuplist
     else
@@ -290,5 +300,5 @@ rm -f "$lockfile/pid"
 rmdir "$lockfile"
 
 endtime=$(date +%s)
-log_verbose "calsnap-finished duration=$((endtime - starttime))s action=exiting"
+log_info "calsnap-finished duration=$((endtime - starttime))s action=exiting"
 exit 0

@@ -12,8 +12,8 @@ Introduction
 -   Portable
 -   Small code footprint
 
-One daily Tarsnap archive is created per run. By default, 31 daily, 26 weekly and 12 monthly backups are kept, and
-yearly backups are kept indefinitely.
+One daily Tarsnap archive is created per run. By default, 31 daily, 26 weekly, 12 monthly and 4 quarterly backups are
+kept, and yearly backups are kept indefinitely.
 
 Download
 --------
@@ -31,17 +31,27 @@ Usage
 Notes on behavior:
 
 -   `calsnap` creates archives of the form `<hostname>-<period>-yyyy-mm-dd_HH:MM:SS`.
-    -   For weekly archives, the `period` value is `weekly-<year>W<week>`, e.g. `weekly-2020W01`.
+    -   For weekly archives, the `period` value is `weekly-<year>W<week>`, e.g. `weekly-2020W53`.
+    -   For quarterly archives, the `period` value is `quarterly-<year>Q<quarter>`, e.g. `quarterly-2020Q4`.
     -   The other `period` values are `daily`, `monthly` and `yearly`.
 -   Archives are created using the following logic:
     -   Daily archives are created every time `calsnap` is run.
-    -   Weekly/monthly/yearly archives are copied from the most recent daily archive if they don't exist.
+    -   Weekly/monthly/quarterly/yearly archives are copied from the most recent daily archive if they don't exist.
 -   Archives are deleted using the following logic by default:
     -   If any backups failed, delete nothing.
-    -   Keep the most recent 31 daily backups, and delete any older ones.
-    -   Keep the most recent 26 weekly backups, and delete any older ones.
-    -   Keep the most recent 12 monthly backups, and delete any older ones.
-    -   Do not delete any yearly backups.
+    -   For each backup type, keep only the most recent X backups, and delete any older ones:
+        -   31 daily
+        -   26 weekly
+        -   12 monthly
+        -   4 quarterly
+        -   Unlimited yearly
+-   As of 1.2.0, the following limits are recommended instead to increase storage space efficiency while
+    maintaining sufficient coverage:
+    -   7 daily
+    -   4 weekly
+    -   3 monthly
+    -   4 quarterly
+    -   Unlimited yearly
 
 FAQ
 ---
@@ -74,3 +84,16 @@ Help
 ----
 
 Open a [Github issue](https://github.com/bannmann/calsnap/issues).
+
+Building
+--------
+
+-   Prerequisites
+    -    make
+    -    [fpm](https://fpm.readthedocs.io/en/latest/)
+    -    shellcheck (optional)
+-   Checking
+    -    `make check`
+-   Release
+    -    update `VERSION=` line in `calsnap`
+    -    `make`
