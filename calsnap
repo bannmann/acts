@@ -100,6 +100,7 @@ lockfile="${lockfile=/var/run/calsnap}"
 dailybackups="${dailybackups:=31}"
 weeklybackups="${weeklybackups:=26}"
 monthlybackups="${monthlybackups:=12}"
+quarterlybackups="${quarterlybackups:=4}"
 yearlybackups="${yearlybackups:=0}"
 type calltarsnap >/dev/null 2>&1 || calltarsnap() { $tarsnap "$@"; }
 LANG="${LANG=en_US.UTF-8}"
@@ -121,6 +122,7 @@ fi
 [ $((dailybackups)) = "$dailybackups" ]     || die "config-error message=\"Invalid \$dailybackups; must be a number.\""
 [ $((weeklybackups)) = "$weeklybackups" ]   || die "config-error message=\"Invalid \$weeklybackups; must be a number.\""
 [ $((monthlybackups)) = "$monthlybackups" ] || die "config-error message=\"Invalid \$monthlybackups; must be a number.\""
+[ $((quarterlybackups)) = "$quarterlybackups" ] || die "config-error message=\"Invalid \$quarterlybackups; must be a number.\""
 [ $((yearlybackups)) = "$yearlybackups" ]   || die "config-error message=\"Invalid \$yearlybackups; must be a number.\""
 
 # Create the lock. mkdir is atomic test/set, so use that instead of the typical test -f/touch combo
@@ -156,6 +158,7 @@ archives=$(echo "$archives_unsorted" | sort -n)
 rawdateinfo=$(date $utc "+%Y-%m-%d_%H:%M:%S_%GW%V")
 today=$( echo "$rawdateinfo" | cut -d_ -f1-2)
 year=$( echo "$today" | cut -d_ -f1 | cut -d- -f1)
+quarter=$(date -d "$(echo "$rawdateinfo" | cut -d_ -f1)" "+%YQ%q")
 month=$(echo "$today" | cut -d_ -f1 | cut -d- -f2)
 isoweek=$(echo "$rawdateinfo" | cut -d_ -f3)
 
@@ -177,6 +180,7 @@ backuplist="" # Maintain list of successfully created archives
 dailyarchive="$hostname-daily-$today"
 weeklyarchive="$hostname-weekly-$isoweek-$today"
 monthlyarchive="$hostname-monthly-$today"
+quarterlyarchive="$hostname-quarterly-$quarter-$today"
 yearlyarchive="$hostname-yearly-$today"
 
 log_info "backup-start  type=daily name=$dailyarchive"
@@ -221,6 +225,11 @@ copy_backup() {
 if ! echo "$archives" | grep -E -q "^$hostname-yearly-$year-[0-9:_-]{14}$"; then
     # No yearly backup
     copy_backup daily "$dailyarchive" yearly "$yearlyarchive"
+fi
+
+if ! echo "$archives" | grep -E -q "^$hostname-quarterly-$quarter-[0-9:_-]{19}$"; then
+    # No quarterly backup
+    copy_backup daily "$dailyarchive" quarterly "$quarterlyarchive"
 fi
 
 if ! echo "$archives" | grep -E -q "^$hostname-monthly-$year-$month-[0-9:_-]{11}$"; then
@@ -270,6 +279,7 @@ prune_backups() {
 
 log_debug "message=\"Checking for old backups to delete\""
 prune_backups yearly  $yearlybackups
+prune_backups quarterly $quarterlybackups
 prune_backups monthly $monthlybackups
 prune_backups weekly  $weeklybackups
 prune_backups daily   $dailybackups
