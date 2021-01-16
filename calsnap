@@ -257,9 +257,9 @@ prune_backups() {
     pb_backuplevel=$1
     pb_max=$2
 
+    backupslist=$(echo "$archives" | grep -E "$hostname-$pb_backuplevel-([0-9]{4}W[0-9]{2}-)?[0-9:_-]{19}$" | sort -rn)
+    numberofbackups=$(printf '%s' "$backupslist" | awk 'END{print NR}')
     if [ "$pb_max" -gt 0 ]; then
-        backupslist=$(echo "$archives" | grep -E "$hostname-$pb_backuplevel-([0-9]{4}W[0-9]{2}-)?[0-9:_-]{19}$" | sort -rn)
-        numberofbackups=$(printf '%s' "$backupslist" | awk 'END{print NR}')
         if [ "$numberofbackups" -gt "$pb_max" ]; then
             log_debug "message=\"More than $pb_max $pb_backuplevel backups, deleting the oldest\""
             echo "$backupslist" | tail -n +"$((pb_max + 1))" | while read -r archivetodel; do
@@ -270,10 +270,10 @@ prune_backups() {
                 fi
             done
         else
-            log_debug "message=\"Found $numberofbackups $pb_backuplevel backups; not deleting any\""
+            log_debug "message=\"Found $numberofbackups $pb_backuplevel backups (limit $pb_max); not deleting any\""
         fi
     else
-        log_debug "message=\"Keeping all $pb_backuplevel backups indefinitely; not deleting any\""
+        log_debug "message=\"Found $numberofbackups $pb_backuplevel backups (no limit); not deleting any\""
     fi
 }
 
