@@ -257,7 +257,7 @@ prune_backups() {
     pb_backuplevel=$1
     pb_max=$2
 
-    backupslist=$(echo "$archives" | grep -E "$hostname-$pb_backuplevel-([0-9]{4}W[0-9]{2}-)?[0-9:_-]{19}$" | sort -rn)
+    backupslist=$(echo "$archives" | grep -E "$hostname-$pb_backuplevel-([0-9]{4}(W[0-9]{2}|Q[1-4])-)?[0-9:_-]{19}$" | sort -rn)
     numberofbackups=$(printf '%s' "$backupslist" | awk 'END{print NR}')
     if [ "$pb_max" -gt 0 ]; then
         if [ "$numberofbackups" -gt "$pb_max" ]; then
